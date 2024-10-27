@@ -266,12 +266,27 @@ int fork(void) {
 
   return pid;
 }
-
+const char* state2str(enum procstate state) {
+  switch(state) {
+    case UNUSED:
+      return "unused";
+    case SLEEPING:
+      return "sleeping";
+    case RUNNABLE:
+      return "runnable";
+    case RUNNING:
+      return "running";
+    case ZOMBIE:
+      return "zombie";
+  }
+  return "zombie";
+}
 // Pass p's abandoned children to init.
 // Caller must hold p->lock.
 void reparent(struct proc *p) {
   struct proc *pp;
 
+  int num = 0;
   for (pp = proc; pp < &proc[NPROC]; pp++) {
     // this code uses pp->parent without holding pp->lock.
     // acquiring the lock first could cause a deadlock
@@ -281,6 +296,8 @@ void reparent(struct proc *p) {
       // pp->parent can't change between the check and the acquire()
       // because only the parent changes it, and we're the parent.
       acquire(&pp->lock);
+      exit_info("proc %d exit, child %d, pid %d, name %s, state %s\n", p->pid, num++, pp->pid, pp->name, state2str(pp->state));
+  
       pp->parent = initproc;
       // we should wake up init here, but that would require
       // initproc->lock, which would be a deadlock, since we hold
@@ -290,6 +307,8 @@ void reparent(struct proc *p) {
     }
   }
 }
+
+
 
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
@@ -312,6 +331,8 @@ void exit(int status) {
   iput(p->cwd);
   end_op();
   p->cwd = 0;
+
+  
 
   // we might re-parent a child to init. we can't be precise about
   // waking up init, since we can't acquire its lock once we've
@@ -338,6 +359,8 @@ void exit(int status) {
 
   acquire(&p->lock);
 
+  exit_info("proc %d exit, parent pid %d, name %s, state %s\n", p->pid, original_parent->pid, original_parent->name, state2str(original_parent->state));
+
   // Give any children to init.
   reparent(p);
 
@@ -356,7 +379,7 @@ void exit(int status) {
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
-int wait(uint64 addr) {
+int wait(uint64 addr, int flags) {
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -395,7 +418,7 @@ int wait(uint64 addr) {
     }
 
     // No point waiting if we don't have any children.
-    if (!havekids || p->killed) {
+    if (!havekids || p->killed || flags) {
       release(&p->lock);
       return -1;
     }
@@ -472,6 +495,20 @@ void sched(void) {
 void yield(void) {
   struct proc *p = myproc();
   acquire(&p->lock);
+  printf("Save the context of the process to the memory region from address %p to %p\n", &p->context, (char*)(&p->context) + 112);
+  printf("Current running process pid is %d and user pc is %p\n", p->pid, p->trapframe->epc);
+  for (struct proc *c = proc; c < &proc[NPROC]; c++) {
+    if(c == p) {
+      continue;
+    }
+    acquire(&c->lock);
+    if (c->state == RUNNABLE) {
+      printf("Next runnable process pid is %d and user pc is %p\n", c->pid, c->trapframe->epc);
+      release(&c->lock);
+      break;
+    }
+    release(&c->lock);
+  }
   p->state = RUNNABLE;
   sched();
   release(&p->lock);

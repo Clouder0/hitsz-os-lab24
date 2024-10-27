@@ -46,6 +46,7 @@ def test_yield_test():
     toolprefix = test_yield_test.options.toolprefix
     result = subprocess.run([f"{toolprefix}addr2line", sepc, "-f", "-s", "-e", "user/_yieldtest"], stdout=subprocess.PIPE, check=True)
     out = result.stdout.decode("utf-8")
+    print("out",out,"result",result)
     assert_equal(out[:6], "yield\n")
 
     match = re.search(r'Next runnable process pid is (\d+) and user pc is (0x[0-9a-fA-F]+)', r.qemu.output, re.MULTILINE)
